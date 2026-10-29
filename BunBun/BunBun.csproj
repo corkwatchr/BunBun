@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Happy.ico</ApplicationIcon>
+		<AssemblyTitle>BunBun</AssemblyTitle>
+		<Product>BunBun</Product>
+		<Company>DaBrEl Software</Company>
+		<Authors>DaBrEl</Authors>
+		<Copyright>Copyright © 2026 DaBrEl Software</Copyright>
+		<Description>
+			A tiny Windows utility that keeps your status active while BunBun stands watch.
+			Like the famous cartoon rabbit, it stomps its feet to keep your status active while you are away from your computer.
+		</Description>
+	</PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Happy.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+
+</Project>
