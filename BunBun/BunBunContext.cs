@@ -5,226 +5,302 @@ namespace BunBun;
 
 public class BunBunContext : ApplicationContext
 {
-	private const string RegistryKeyName = "BunBun";
+    private BunBunSettings _settings;
+    private const string RegistryKeyName = "BunBun";
+    private readonly NotifyIcon _notifyIcon;
+    private readonly System.Windows.Forms.Timer _timer;
+    private ToolStripMenuItem? _startupMenuItem;
+    private ToolStripMenuItem? _activeMenuItem;
+    private DateTime? _lastStompTime;
+    private bool _active = true;
+    private bool _stomping;
 
-	private readonly NotifyIcon _notifyIcon;
-	private readonly System.Windows.Forms.Timer _timer;
+    public BunBunContext()
+    {
+        _settings = SettingsManager.Load();
 
-	private ToolStripMenuItem? _startupMenuItem;
-	private ToolStripMenuItem? _activeMenuItem;
+        var menu = new ContextMenuStrip();
 
-	private bool _paused;
-	private bool _stomping;
+        menu.Items.Add(
+            "Stomp Now!",
+            null,
+            async (_, _) => await StompAsync());
 
-	private DateTime _lastStompTime = DateTime.Now;
+        menu.Items.Add(new ToolStripSeparator());
 
-	public BunBunContext()
-	{
-		var menu = new ContextMenuStrip();
+        _activeMenuItem = new ToolStripMenuItem("Active")
+        {
+            Checked = _active
+        };
 
-		menu.Items.Add(
-				"Stomp Now!",
-				null,
-				async (_, _) => await PulseAsync());
+        _activeMenuItem.Click += (_, _) =>
+        {
+            _active = !_active;
 
-		menu.Items.Add(new ToolStripSeparator());
+            _activeMenuItem.Checked = _active;
 
-		_activeMenuItem = new ToolStripMenuItem("Active")
-		{
-			Checked = true
-		};
+            if (_active)
+            {
+                SetHappyState();
+            }
+            else
+            {
+                SetPausedState();
+            }
+        };
 
-		_activeMenuItem.Click += (_, _) =>
-		{
-			_paused = _activeMenuItem.Checked;
+        menu.Items.Add(_activeMenuItem);
 
-			_activeMenuItem.Checked = !_paused;
+        menu.Items.Add(new ToolStripSeparator());
 
-			if (_paused)
-			{
-				SetPausedState();
-			}
-			else
-			{
-				SetHappyState();
-			}
-		};
+        _startupMenuItem = new ToolStripMenuItem("Run At Startup")
+        {
+            Checked = IsStartupEnabled()
+        };
 
-		menu.Items.Add(_activeMenuItem);
+        _startupMenuItem.Click += (_, _) =>
+        {
+            ToggleStartup();
+        };
 
-		menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(_startupMenuItem);
 
-		_startupMenuItem = new ToolStripMenuItem("Run At Startup")
-		{
-			Checked = IsStartupEnabled()
-		};
+        menu.Items.Add(new ToolStripSeparator());
 
-		_startupMenuItem.Click += (_, _) =>
-		{
-			ToggleStartup();
-		};
+        menu.Items.Add(
+            "Settings...",
+            null,
+            (_, _) => ShowSettings());
 
-		menu.Items.Add(_startupMenuItem);
+        menu.Items.Add(
+            "About...",
+            null,
+            (_, _) => ShowAbout());
 
-		menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(new ToolStripSeparator());
 
-		menu.Items.Add(
-				"Exit",
-				null,
-				(_, _) => Exit());
+        menu.Items.Add(
+            "Exit",
+            null,
+            (_, _) => Exit());
 
-		_notifyIcon = new NotifyIcon
-		{
-			Icon = Resources.Happy,
-			Visible = true,
-			Text = "BunBun is watching."
-		};
+        _notifyIcon = new NotifyIcon
+        {
+            Icon = Resources.Happy,
+            Visible = true,
+            Text = "BunBun is watching."
+        };
 
-		_notifyIcon.ContextMenuStrip = menu;
+        _notifyIcon.ContextMenuStrip = menu;
 
-		_notifyIcon.DoubleClick += (_, _) =>
-		{
-			_notifyIcon.ShowBalloonTip(
-					3000,
-					"BunBun",
-					_paused
-							? "BunBun is currently paused."
-							: $"Idle state not found. 🐰😜\nLast stomp: {_lastStompTime:t}",
-					ToolTipIcon.None);
-		};
+        _notifyIcon.DoubleClick += (_, _) =>
+        {
+            var lastStomp =
+                _lastStompTime?.ToString("t") ?? "Never";
 
-		_timer = new System.Windows.Forms.Timer
-		{
-			Interval = (int)TimeSpan.FromMinutes(4).TotalMilliseconds
-		};
+            _notifyIcon.ShowBalloonTip(
+                3000,
+                "BunBun",
+                _active
+                    ? $"Idle state not found. Get it? 🐰😜\nLast stomp: {lastStomp}"
+                    : "BunBun is currently paused.",
+                ToolTipIcon.None);
+        };
 
-		_timer.Tick += async (_, _) =>
-		{
-			if (!_paused)
-			{
-				await PulseAsync();
-			}
-		};
+        _timer = new System.Windows.Forms.Timer();
 
-		_timer.Start();
+        _timer.Tick += async (_, _) =>
+        {
+            if (_active)
+            {
+                await StompAsync();
+            }
+        };
 
-		SetHappyState();
-	}
+        ApplySettings();
+        
+        _timer.Start();
+    }
 
-	private async Task PulseAsync()
-	{
-		if (_stomping)
-			return;
+    private void ShowSettings()
+    {
+        using var dlg = new SettingsForm(_settings);
 
-		try
-		{
-			_stomping = true;
+        if (dlg.ShowDialog() == DialogResult.OK)
+        {
+            _settings = dlg.Settings;
 
-			SetWarningState();
+            SettingsManager.Save(_settings);
 
-			await Task.Delay(500);
+            ApplySettings();
+        }
+    }
 
-			SetStompState();
+    private void ApplySettings()
+    {
+        _activeMenuItem!.Checked = _active;
 
-			SendF15();
+        _timer.Interval =
+            (int)TimeSpan
+                .FromMinutes(_settings.StompIntervalMinutes)
+                .TotalMilliseconds;
 
-			_lastStompTime = DateTime.Now;
+        if (_active)
+        {
+            SetHappyState();
+        }
+        else
+        {
+            SetPausedState();
+        }
+    }
 
-			await Task.Delay(500);
 
-			SetHappyState();
-		}
-		finally
-		{
-			_stomping = false;
-		}
-	}
+    private void ShowAbout()
+    {
+        var version =
+            typeof(BunBunContext)
+                .Assembly
+                .GetName()
+                .Version;
 
-	private static void SendF15()
-	{
-		// Try to find F15 on your keyboard.
-		// It's not there.
-		// But it's a key that exists and is unused in most apps.
-		SendKeys.SendWait("{F15}"); 
-	}
+        MessageBox.Show(
+            $"BunBun v{version}\r\n\r\n" +
+            "A highly sophisticated bunny-powered idle prevention system.\r\n\r\n" +
+            $"Stomp Interval: {_settings.StompIntervalMinutes} minute(s)\r\n" +
+            $"Stomp Count: {_settings.StompCount:N0}\r\n" +
+            $"Last Stomp: {_lastStompTime?.ToString("t") ?? "Never"}" + "\r\n\r\n" +
+            "🐰",
+            "About BunBun...",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
 
-	private void SetHappyState()
-	{
-		_notifyIcon.Icon = Resources.Happy;
+    private async Task StompAsync()
+    {
+        if (_stomping)
+            return;
 
-		_notifyIcon.Text =
-				$"BunBun Active {_lastStompTime:t}";
-	}
+        try
+        {
+            _stomping = true;
 
-	private void SetWarningState()
-	{
-		_notifyIcon.Icon = Resources.Warning;
+            SetWarningState();
 
-		_notifyIcon.Text =
-				"Preparing stomp...";
-	}
+            await Task.Delay(500);
 
-	private void SetStompState()
-	{
-		_notifyIcon.Icon = Resources.Stomp;
+            SetStompState();
 
-		_notifyIcon.Text =
-				"STOMP!";
-	}
+            SendF15();
 
-	private void SetPausedState()
-	{
-		_notifyIcon.Icon = Resources.Warning;
+            _settings.RecordStomp();
 
-		_notifyIcon.Text =
-				"BunBun Paused";
-	}
+            SettingsManager.Save(_settings);
 
-	private bool IsStartupEnabled()
-	{
-		using var key = Registry.CurrentUser.OpenSubKey(
-				@"Software\Microsoft\Windows\CurrentVersion\Run");
+            _lastStompTime = DateTime.Now;
 
-		return key?.GetValue(RegistryKeyName) != null;
-	}
+            await Task.Delay(500);
 
-	private void ToggleStartup()
-	{
-		using var key = Registry.CurrentUser.OpenSubKey(
-				@"Software\Microsoft\Windows\CurrentVersion\Run",
-				writable: true);
+            if (_active)
+            {
+                SetHappyState();
+            }
+            else
+            {
+                SetPausedState();
+            }
+        }
+        finally
+        {
+            _stomping = false;
+        }
+    }
 
-		if (key == null)
-			return;
+    private static void SendF15()
+    {
+        // Try to find F15 on your keyboard.
+        // It's not there.
+        // But it's a key that exists and is unused in most apps.
+        SendKeys.SendWait("{F15}");
+    }
 
-		if (IsStartupEnabled())
-		{
-			key.DeleteValue(RegistryKeyName, false);
+    private void SetHappyState()
+    {
+        _notifyIcon.Icon = Resources.Happy;
 
-			if (_startupMenuItem != null)
-				_startupMenuItem.Checked = false;
-		}
-		else
-		{
-			var exePath = Application.ExecutablePath;
+        _notifyIcon.Text =
+                $"BunBun Active {_lastStompTime:t}";
+    }
 
-			key.SetValue(
-					RegistryKeyName,
-					$"\"{exePath}\"");
+    private void SetWarningState()
+    {
+        _notifyIcon.Icon = Resources.Warning;
 
-			if (_startupMenuItem != null)
-				_startupMenuItem.Checked = true;
-		}
-	}
+        _notifyIcon.Text =
+                "Preparing stomp...";
+    }
 
-	private void Exit()
-	{
-		_timer.Stop();
-		_timer.Dispose();
+    private void SetStompState()
+    {
+        _notifyIcon.Icon = Resources.Stomp;
 
-		_notifyIcon.Visible = false;
-		_notifyIcon.Dispose();
+        _notifyIcon.Text =
+                "STOMP!";
+    }
 
-		ExitThread();
-	}
+    private void SetPausedState()
+    {
+        _notifyIcon.Icon = Resources.Warning;
+
+        _notifyIcon.Text =
+                "BunBun Paused";
+    }
+
+    private bool IsStartupEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run");
+
+        return key?.GetValue(RegistryKeyName) != null;
+    }
+
+    private void ToggleStartup()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Run",
+                writable: true);
+
+        if (key == null)
+            return;
+
+        if (IsStartupEnabled())
+        {
+            key.DeleteValue(RegistryKeyName, false);
+
+            if (_startupMenuItem != null)
+                _startupMenuItem.Checked = false;
+        }
+        else
+        {
+            var exePath = Application.ExecutablePath;
+
+            key.SetValue(
+                    RegistryKeyName,
+                    $"\"{exePath}\"");
+
+            if (_startupMenuItem != null)
+                _startupMenuItem.Checked = true;
+        }
+    }
+
+    private void Exit()
+    {
+        _timer.Stop();
+        _timer.Dispose();
+
+        _notifyIcon.Visible = false;
+        _notifyIcon.Dispose();
+
+        ExitThread();
+    }
 }
