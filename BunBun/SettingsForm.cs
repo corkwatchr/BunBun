@@ -22,8 +22,23 @@ namespace BunBun
 
         private void LoadSettings()
         {
-            // populate controls
+            nudStopIntervalMinutes.Value = Math.Clamp(
+                Settings.StompIntervalMinutes,
+                nudStopIntervalMinutes.Minimum,
+                nudStopIntervalMinutes.Maximum);
+
+            chkEnableAutoActivation.Checked = Settings.EnableMorningActivation;
+            dtpMorningStart.Value = ToPickerValue(Settings.MorningStart);
+            dtpMorningEnd.Value = ToPickerValue(Settings.MorningEnd);
+
+            chkEnableAutoDeactivation.Checked = Settings.EnableEveningDeactivation;
+            dtpEveningStart.Value = ToPickerValue(Settings.EveningStart);
+            dtpEveningEnd.Value = ToPickerValue(Settings.EveningEnd);
         }
+
+        // The time pickers hold a full DateTime; only the time part is shown and used.
+        private static DateTime ToPickerValue(TimeOnly time) =>
+            DateTime.Today.Add(time.ToTimeSpan());
 
         private void btnOK_Click(
             object sender,
@@ -31,6 +46,7 @@ namespace BunBun
         {
             Settings = new BunBunSettings
             {
+                StompCount = Settings.StompCount,
                 StompIntervalMinutes = (int)nudStopIntervalMinutes.Value,
                 EnableMorningActivation = chkEnableAutoActivation.Checked,
                 MorningStart = TimeOnly.FromDateTime(dtpMorningStart.Value),
