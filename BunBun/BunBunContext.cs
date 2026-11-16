@@ -17,6 +17,7 @@ public class BunBunContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _timer;
     private readonly System.Windows.Forms.Timer _scheduleTimer;
     private readonly ActivitySchedule _schedule;
+    private readonly IdleDetector _idleDetector = new();
     private ToolStripMenuItem? _startupMenuItem;
     private ToolStripMenuItem? _activeMenuItem;
     private DateTime? _lastStompTime;
@@ -140,7 +141,8 @@ public class BunBunContext : ApplicationContext
     //  TIMERS
     //  The stomp timer fires every few minutes (from Settings) and stomps
     //  while BunBun is active. The schedule timer checks every 30 seconds
-    //  whether it is time for the automatic morning start or evening pause.
+    //  whether it is time for the automatic morning start or evening pause,
+    //  and whether the user has been away long enough to pause for inactivity.
     // ****************************************************************************************
 
     private System.Windows.Forms.Timer CreateStompTimer()
@@ -187,6 +189,11 @@ public class BunBunContext : ApplicationContext
 
     private void SetActive(bool active)
     {
+        // Each activation restarts the inactivity clock, so an automatic
+        // morning activation isn't undone right away by overnight idleness.
+        if (active && !_active)
+            _idleDetector.Reset();
+
         _active = active;
 
         _activeMenuItem!.Checked = _active;
@@ -208,6 +215,25 @@ public class BunBunContext : ApplicationContext
                 ShowBalloon("BunBun is done for the day. Good night! 🐰💤");
                 break;
         }
+
+        CheckInactivity();
+    }
+
+    private void CheckInactivity()
+    {
+        if (!_active || !_settings.EnableInactivityDeactivation)
+            return;
+
+        var limit = TimeSpan.FromMinutes(_settings.InactivityMinutes);
+
+        if (_idleDetector.GetIdleTime() < limit)
+            return;
+
+        SetActive(false);
+
+        ShowBalloon(
+            $"No keyboard or mouse activity for {_settings.InactivityMinutes} minute(s). " +
+            "BunBun is taking a nap. 🐰💤");
     }
 
     // ****************************************************************************************
@@ -232,7 +258,13 @@ public class BunBunContext : ApplicationContext
 
             SetStompState();
 
+            // Bracket the injected key so the idle detector doesn't
+            // count BunBun's own stomp as user activity.
+            _idleDetector.BeginSyntheticInput();
+
             SendF15();
+
+            _idleDetector.EndSyntheticInput();
 
             _settings.RecordStomp();
 
