@@ -22,6 +22,10 @@ namespace BunBun
 
         public TimeOnly EveningEnd { get; set; } = new(17, 0);
 
+        public bool EnableInactivityDeactivation {  get; set; }
+
+        public int InactivityMinutes { get; set; } = 60;
+
         public void RecordStomp()
         {
             StompCount++;
